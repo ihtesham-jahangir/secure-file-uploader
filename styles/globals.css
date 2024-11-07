@@ -1,0 +1,55 @@
+/* styles/globals.css */
+
+/* Import Google Font: Poppins */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap');
+
+/* Tailwind Directives */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global Styles */
+body {
+  font-family: 'Poppins', sans-serif;
+  background-image: url('https://media.istockphoto.com/id/2021524810/photo/business-people-enhance-your-cyber-security-with-cutting-edge-solutions-protect-data-prevent.jpg?s=1024x1024&w=is&k=20&c=QGqGbpUooBySfaZ-UXZLxjyyorkkUNL1hYzAjoRiAvA='); /* Ensure this image exists in /public */
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  color: #333; /* Base text color */
+}
+
+/* Apply a semi-transparent overlay for better readability */
+.overlay {
+  background: rgba(255, 255, 255, 0.8);
+}
+
+/* Button Hover Effect */
+.button-hover-effect {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.button-hover-effect:hover {
+  transform: scale(1.05);
+  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+/* Tooltip Styles */
+.tooltip {
+  position: relative;
+}
+
+.tooltip:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #333;
+  color: white;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
