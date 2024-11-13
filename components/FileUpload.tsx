@@ -319,6 +319,7 @@ export default function FileUpload() {
           onChange={handleFileChange}
           className="file-input file-input-bordered w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
+        
         <input
           type="password"
           placeholder="Enter encryption passphrase"
