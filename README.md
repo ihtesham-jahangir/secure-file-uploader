@@ -1,6 +1,6 @@
 # Encrypted File Manager
 
-![Encrypted File Manager](https://your-image-link.com/banner.png) *(Replace with your project's banner image if available)*
+![Encrypted File Manager](https://github.com/ihtesham-jahangir/secure-file-uploader/blob/master/public/image.png)
 
 **Encrypted File Manager** is a secure Next.js application that allows users to authenticate with their Google accounts, access their Google Drive, and manage encrypted files seamlessly. Users can decrypt and download their encrypted files directly from Google Drive by providing a passphrase.
 
