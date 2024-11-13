@@ -4,10 +4,10 @@ import { useSession } from 'next-auth/react';
 export default function FileList() {
   const { data: session, status } = useSession();
   const [folders, setFolders] = useState<Array<any>>([]);
-  const [passphrase, setPassphrase] = useState('');
-  const [downloading, setDownloading] = useState<boolean>(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [decryptionInProgress, setDecryptionInProgress] = useState<string | null>(null); // Track file being decrypted
   const [progress, setProgress] = useState<number>(0);
+  const [passphrase, setPassphrase] = useState('');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (session?.accessToken) {
@@ -15,7 +15,7 @@ export default function FileList() {
     }
   }, [session]);
 
-  // Fetch folders representing original files
+  // Function to fetch folders representing original files
   const fetchFolders = async () => {
     if (!session?.accessToken) {
       showToast('User session is not available.');
@@ -48,7 +48,7 @@ export default function FileList() {
     }
   };
 
-  // Fetch all chunks in a folder
+  // Function to fetch chunks for a specific folder
   const fetchChunksInFolder = async (folderId: string): Promise<Array<any>> => {
     if (!session?.accessToken) {
       showToast('User session is not available.');
@@ -82,7 +82,7 @@ export default function FileList() {
     }
   };
 
-  // Download a single chunk
+  // Download and decrypt a specific chunk
   const downloadFile = async (fileId: string): Promise<Uint8Array | null> => {
     if (!session?.accessToken) {
       showToast('User session is not available.');
@@ -151,7 +151,7 @@ export default function FileList() {
     );
   };
 
-  // Merge all decrypted chunks
+  // Merge decrypted chunks
   const mergeChunks = (chunks: ArrayBuffer[]): ArrayBuffer => {
     const totalLength = chunks.reduce((acc, chunk) => acc + chunk.byteLength, 0);
     const mergedBuffer = new Uint8Array(totalLength);
@@ -163,7 +163,7 @@ export default function FileList() {
     return mergedBuffer.buffer;
   };
 
-  // Handle download
+  // Handle download and decryption for specific file
   const handleDownload = async (folderId: string, folderName: string) => {
     if (!passphrase) {
       showToast('Please enter the passphrase.');
@@ -175,7 +175,7 @@ export default function FileList() {
       return;
     }
 
-    setDownloading(true);
+    setDecryptionInProgress(folderId);
     setProgress(0);
 
     try {
@@ -206,7 +206,7 @@ export default function FileList() {
       console.error('Download and Decryption Error:', error);
       showToast(error.message || 'Error downloading and decrypting file');
     } finally {
-      setDownloading(false);
+      setDecryptionInProgress(null);
     }
   };
 
@@ -248,10 +248,10 @@ export default function FileList() {
                 <td className="py-4 px-6">
                   <button
                     onClick={() => handleDownload(folder.id, folder.name)}
-                    disabled={downloading}
+                    disabled={decryptionInProgress === folder.id}
                     className="bg-purple-500 text-white px-3 py-1.5 rounded-lg"
                   >
-                    {downloading ? 'Decrypting...' : 'Download & Decrypt'}
+                    {decryptionInProgress === folder.id ? 'Decrypting...' : 'Download & Decrypt'}
                   </button>
                 </td>
               </tr>
@@ -259,7 +259,7 @@ export default function FileList() {
           </tbody>
         </table>
       )}
-      {downloading && (
+      {decryptionInProgress && (
         <div className="mt-4">
           <div className="w-full bg-gray-200 rounded-full h-4">
             <div
