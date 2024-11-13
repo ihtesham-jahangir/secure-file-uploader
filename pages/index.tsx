@@ -5,6 +5,7 @@ import FileUpload from '../components/FileUpload';
 import FileList from '../components/FileList';
 import Image from 'next/image';
 import { FaGoogle, FaSignOutAlt } from 'react-icons/fa';
+import Dashboard from './dashboard';
 
 export default function Home() {
   const { data: session } = useSession();
@@ -45,8 +46,7 @@ export default function Home() {
       <main className="w-full max-w-3xl flex flex-col items-center space-y-8">
         {session ? (
           <>
-            <FileUpload />
-            <FileList />
+      <Dashboard />
           </>
         ) : (
           <div className="text-center text-gray-700 bg-white bg-opacity-90 p-6 rounded-md shadow-lg overlay">
