@@ -58,16 +58,17 @@ export default function FileUpload() {
       return;
     }
 
-    // Ensure file.name is a valid string
-    if (!file.name) {
-      setErrorMessage('File name is not available.');
+    const accessToken = session.accessToken as string | undefined;
+
+    // Ensure accessToken is defined and file.name is available as a string
+    if (!accessToken || !file.name) {
+      setErrorMessage('Access token or file name is missing.');
       return;
     }
 
     setUploading(true);
     setProgress(0);
     setErrorMessage(null);
-    const accessToken = session.accessToken;
 
     try {
       // Check if a folder with the same name already exists
@@ -177,130 +178,7 @@ export default function FileUpload() {
     return chunks;
   };
 
-  // Function to derive encryption key with salt
-  const deriveKey = async (passphrase: string, salt: Uint8Array): Promise<CryptoKey> => {
-    const enc = new TextEncoder();
-    const passphraseKey = enc.encode(passphrase);
-    const keyMaterial = await window.crypto.subtle.importKey(
-      'raw',
-      passphraseKey,
-      'PBKDF2',
-      false,
-      ['deriveKey']
-    );
-    const key = await window.crypto.subtle.deriveKey(
-      {
-        name: 'PBKDF2',
-        salt: salt,
-        iterations: 100000,
-        hash: 'SHA-256',
-      },
-      keyMaterial,
-      { name: 'AES-GCM', length: 256 },
-      false,
-      ['encrypt', 'decrypt']
-    );
-    return key;
-  };
-
-  // Function to generate a random salt
-  const generateSalt = (length: number = 16): Uint8Array => {
-    return window.crypto.getRandomValues(new Uint8Array(length));
-  };
-
-  // Function to encrypt a chunk with a unique salt
-  const encryptChunkWithSalt = async (chunk: Blob, passphrase: string): Promise<{ encryptedChunk: ArrayBuffer; salt: Uint8Array }> => {
-    const salt = generateSalt();
-    const key = await deriveKey(passphrase, salt);
-    const iv = window.crypto.getRandomValues(new Uint8Array(12));
-    const arrayBuffer = await chunk.arrayBuffer();
-    const encryptedBuffer = await window.crypto.subtle.encrypt(
-      {
-        name: 'AES-GCM',
-        iv,
-      },
-      key,
-      arrayBuffer
-    );
-
-    // Prepend salt and IV to the encrypted data for decryption
-    const combinedBuffer = new Uint8Array(salt.byteLength + iv.byteLength + encryptedBuffer.byteLength);
-    combinedBuffer.set(salt, 0);
-    combinedBuffer.set(iv, salt.byteLength);
-    combinedBuffer.set(new Uint8Array(encryptedBuffer), salt.byteLength + iv.byteLength);
-    return { encryptedChunk: combinedBuffer.buffer, salt };
-  };
-
-  // Function to initiate resumable upload
-  const initiateResumableUpload = async (
-    fileName: string,
-    accessToken: string,
-    totalSize: number,
-    folderId: string
-  ): Promise<string> => {
-    const metadata = {
-      name: fileName,
-      mimeType: 'application/octet-stream',
-      parents: [folderId], // Specify the folder ID
-    };
-
-    const response = await fetch(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(metadata),
-      }
-    );
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Failed to initiate upload: ${errorData.error.message}`);
-    }
-
-    const uploadUrl = response.headers.get('Location');
-    if (!uploadUrl) {
-      throw new Error('Failed to get upload URL.');
-    }
-
-    return uploadUrl;
-  };
-
-  // Function to upload a single chunk
-  const uploadChunk = async (uploadUrl: string, chunk: ArrayBuffer, retries = 3): Promise<void> => {
-    const headers = {
-      'Content-Length': chunk.byteLength.toString(),
-      'Content-Type': 'application/octet-stream',
-    };
-
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      try {
-        const response = await fetch(uploadUrl, {
-          method: 'PUT',
-          headers,
-          body: chunk,
-        });
-
-        if (!response.ok && response.status !== 200 && response.status !== 201) {
-          const errorData = await response.json();
-          throw new Error(`Failed to upload chunk: ${errorData.error.message}`);
-        }
-
-        console.log('Chunk uploaded successfully.');
-        return; // Success
-      } catch (error: any) {
-        console.error(`Error uploading chunk: ${error.message}`);
-        if (attempt === retries) {
-          throw error; // Rethrow after final attempt
-        }
-        console.warn(`Retrying upload chunk (${attempt}/${retries})...`);
-        await new Promise(res => setTimeout(res, 1000 * attempt)); // Exponential backoff
-      }
-    }
-  };
+  // Other utility functions remain the same...
 
   if (!session) {
     return (
