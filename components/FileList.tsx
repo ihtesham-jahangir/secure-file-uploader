@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 
 export default function FileList() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [folders, setFolders] = useState<Array<any>>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [passphrase, setPassphrase] = useState('');
@@ -20,6 +20,11 @@ export default function FileList() {
 
   // Function to fetch folders representing original files
   const fetchFolders = async () => {
+    if (!session || !session.accessToken) {
+      showToast('User session is not available.');
+      return;
+    }
+
     try {
       const params = new URLSearchParams({
         pageSize: '100',
@@ -72,6 +77,11 @@ export default function FileList() {
       return;
     }
 
+    if (!session || !session.accessToken) {
+      showToast('User session is not available.');
+      return;
+    }
+
     setDownloading(true);
     setProgress(0);
 
@@ -100,6 +110,9 @@ export default function FileList() {
 
         // Download the encrypted chunk
         const encryptedData = await downloadFile(chunk.id, chunk.name);
+        if (!encryptedData) {
+          throw new Error(`Failed to download chunk: ${chunk.name}`);
+        }
 
         // Decrypt the chunk
         const decryptedData = await decryptChunk(encryptedData, passphrase);
@@ -139,6 +152,11 @@ export default function FileList() {
 
   // Function to fetch all chunks in a folder
   const fetchChunksInFolder = async (folderId: string): Promise<Array<any>> => {
+    if (!session || !session.accessToken) {
+      showToast('User session is not available.');
+      return [];
+    }
+
     try {
       const params = new URLSearchParams({
         pageSize: '100',
@@ -167,7 +185,12 @@ export default function FileList() {
   };
 
   // Function to download a single chunk
-  const downloadFile = async (fileId: string, fileName: string): Promise<Uint8Array> => {
+  const downloadFile = async (fileId: string, fileName: string): Promise<Uint8Array | null> => {
+    if (!session || !session.accessToken) {
+      showToast('User session is not available.');
+      return null;
+    }
+
     try {
       const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
         headers: {
@@ -265,6 +288,11 @@ export default function FileList() {
     const confirmDelete = confirm('Are you sure you want to delete this file and all its chunks?');
     if (!confirmDelete) return;
 
+    if (!session || !session.accessToken) {
+      showToast('User session is not available.');
+      return;
+    }
+
     setDeleting(folderId);
 
     try {
@@ -315,7 +343,9 @@ export default function FileList() {
         {errorMessage && <p className="mt-2 text-red-500 text-sm">{errorMessage}</p>}
       </div>
 
-      {folders.length === 0 ? (
+      {status === 'loading' ? (
+        <p className="text-gray-600 text-center">Loading session...</p>
+      ) : folders.length === 0 ? (
         <p className="text-gray-600 text-center">No files found. Upload some files first.</p>
       ) : (
         <div className="overflow-x-auto">
