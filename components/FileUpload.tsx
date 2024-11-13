@@ -27,35 +27,40 @@ export default function FileUpload() {
     setErrorMessage(null); // Clear error when user starts typing
   };
 
-// Generate a random passphrase and include file name
-const generatePassphrase = () => {
-  const array = new Uint8Array(16);
-  window.crypto.getRandomValues(array);
-  const randomPassphrase = Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
-  setPassphrase(randomPassphrase);
+  // Generate a random passphrase and include file name
+  const generatePassphrase = () => {
+    const array = new Uint8Array(16);
+    window.crypto.getRandomValues(array);
+    const randomPassphrase = Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+    setPassphrase(randomPassphrase);
 
-  // Ensure a file is selected
-  if (!file) {
-    alert('Please select a file first.');
-    return;
-  }
+    // Ensure a file is selected
+    if (!file) {
+      alert('Please select a file first.');
+      return;
+    }
 
-  // Create the content for the passphrase file, including the file name
-  const passphraseContent = `File Name: ${file.name}\nYour Passphrase: ${randomPassphrase}`;
-  const blob = new Blob([passphraseContent], { type: 'text/plain' });
+    // Create the content for the passphrase file, including the file name
+    const passphraseContent = `File Name: ${file.name}\nYour Passphrase: ${randomPassphrase}`;
+    const blob = new Blob([passphraseContent], { type: 'text/plain' });
 
-  // Trigger the download of the passphrase file
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = 'passphrase.txt';
-  link.click();
-};
-
+    // Trigger the download of the passphrase file
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'passphrase.txt';
+    link.click();
+  };
 
   // Handle the upload process
   const handleUpload = async () => {
     if (!file || !session || !passphrase) {
       setErrorMessage('Please select a file and enter a passphrase.');
+      return;
+    }
+
+    // Ensure file.name is not undefined
+    if (typeof file.name !== 'string') {
+      setErrorMessage('File name is not available.');
       return;
     }
 
@@ -68,7 +73,7 @@ const generatePassphrase = () => {
       // Check if a folder with the same name already exists
       const folderExists = await checkIfFolderExists(file.name, accessToken);
       if (folderExists) {
-        throw alert('A file with the same name has already been uploaded.');
+        throw new Error('A file with the same name has already been uploaded.');
       }
 
       // Create a folder in Google Drive with the file's name
@@ -125,7 +130,7 @@ const generatePassphrase = () => {
 
     if (!response.ok) {
       const errorData = await response.json();
-      throw alert(`Failed to check existing folders: ${errorData.error.message}`);
+      throw new Error(`Failed to check existing folders: ${errorData.error.message}`);
     }
 
     const data = await response.json();
@@ -150,7 +155,7 @@ const generatePassphrase = () => {
 
     if (!response.ok) {
       const errorData = await response.json();
-      throw alert(`Failed to create folder: ${errorData.error.message}`);
+      throw new Error(`Failed to create folder: ${errorData.error.message}`);
     }
 
     const data = await response.json();
@@ -253,12 +258,12 @@ const generatePassphrase = () => {
 
     if (!response.ok) {
       const errorData = await response.json();
-      throw alert(`Failed to initiate upload: ${errorData.error.message}`);
+      throw new Error(`Failed to initiate upload: ${errorData.error.message}`);
     }
 
     const uploadUrl = response.headers.get('Location');
     if (!uploadUrl) {
-      throw alert('Failed to get upload URL.');
+      throw new Error('Failed to get upload URL.');
     }
 
     return uploadUrl;
@@ -281,7 +286,7 @@ const generatePassphrase = () => {
 
         if (!response.ok && response.status !== 200 && response.status !== 201) {
           const errorData = await response.json();
-          throw alert(`Failed to upload chunk: ${errorData.error.message}`);
+          throw new Error(`Failed to upload chunk: ${errorData.error.message}`);
         }
 
         console.log('Chunk uploaded successfully.');
@@ -322,7 +327,7 @@ const generatePassphrase = () => {
   return (
     <div className="w-full max-w-md mx-auto bg-white shadow-lg rounded-lg p-8 mb-10">
       <h2 className="text-2xl font-semibold text-gray-800 mb-6 text-center">Upload and Encrypt File</h2>
-      
+
       {/* Error Message */}
       {errorMessage && (
         <div className="mb-4 p-4 text-red-700 bg-red-100 rounded-lg">
@@ -343,14 +348,14 @@ const generatePassphrase = () => {
           onChange={handlePassphraseChange}
           className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
-        
+
         {file && (
           <p className="text-gray-600 text-center">
             Selected File: <span className="font-medium">{file.name}</span>
           </p>
         )}
       </div>
-  
+
       <div className="flex justify-between mt-6 space-x-4">
         <button
           onClick={generatePassphrase}
