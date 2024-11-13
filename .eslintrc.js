@@ -14,6 +14,7 @@ module.exports = {
       'plugin:react/recommended',
       'plugin:@typescript-eslint/recommended',
       'plugin:next/recommended',
+     
     ],
     parser: '@typescript-eslint/parser',
     plugins: ['react', '@typescript-eslint'],

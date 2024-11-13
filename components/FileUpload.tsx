@@ -34,17 +34,13 @@ export default function FileUpload() {
     const randomPassphrase = Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
     setPassphrase(randomPassphrase);
 
-    // Ensure a file is selected
     if (!file) {
       alert('Please select a file first.');
       return;
     }
 
-    // Create the content for the passphrase file, including the file name
     const passphraseContent = `File Name: ${file.name}\nYour Passphrase: ${randomPassphrase}`;
     const blob = new Blob([passphraseContent], { type: 'text/plain' });
-
-    // Trigger the download of the passphrase file
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = 'passphrase.txt';
@@ -161,7 +157,6 @@ export default function FileUpload() {
       arrayBuffer
     );
 
-    // Prepend salt and IV to the encrypted data for decryption
     const combinedBuffer = new Uint8Array(salt.byteLength + iv.byteLength + encryptedBuffer.byteLength);
     combinedBuffer.set(salt, 0);
     combinedBuffer.set(iv, salt.byteLength);
@@ -179,7 +174,7 @@ export default function FileUpload() {
     const metadata = {
       name: fileName,
       mimeType: 'application/octet-stream',
-      parents: [folderId], // Specify the folder ID
+      parents: [folderId],
     };
 
     const response = await fetch(
@@ -228,15 +223,61 @@ export default function FileUpload() {
         }
 
         console.log('Chunk uploaded successfully.');
-        return; // Success
+        return;
       } catch (error: any) {
         console.error(`Error uploading chunk: ${error.message}`);
         if (attempt === retries) {
-          throw error; // Rethrow after final attempt
+          throw error;
         }
-        console.warn(`Retrying upload chunk (${attempt}/${retries})...`);
-        await new Promise(res => setTimeout(res, 1000 * attempt)); // Exponential backoff
+        await new Promise(res => setTimeout(res, 1000 * attempt));
       }
+    }
+  };
+
+  // Handle the upload process
+  const handleUpload = async () => {
+    if (!file || !session || !passphrase) {
+      setErrorMessage('Please select a file and enter a passphrase.');
+      return;
+    }
+
+    const accessToken = session.accessToken as string | undefined;
+    if (!accessToken || !file.name) {
+      setErrorMessage('Access token or file name is missing.');
+      return;
+    }
+
+    setUploading(true);
+    setProgress(0);
+    setErrorMessage(null);
+
+    try {
+      const folderExists = await checkIfFolderExists(file.name, accessToken);
+      if (folderExists) {
+        throw new Error('A file with the same name has already been uploaded.');
+      }
+
+      const folderId = await createDriveFolder(file.name, accessToken);
+      const chunks = splitFileIntoChunks(file, CHUNK_SIZE);
+
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const { encryptedChunk, salt } = await encryptChunkWithSalt(chunk, passphrase);
+        const chunkFileName = `chunk${i + 1}.alpha`;
+        const uploadUrl = await initiateResumableUpload(chunkFileName, accessToken, encryptedChunk.byteLength, folderId);
+
+        await uploadChunk(uploadUrl, encryptedChunk);
+        setProgress(((i + 1) / chunks.length) * 100);
+      }
+
+      alert('File uploaded successfully!');
+      setFile(null);
+      setPassphrase('');
+    } catch (error: any) {
+      console.error('Encryption or upload error:', error);
+      setErrorMessage(error.message || 'An error occurred during encryption or upload.');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -266,7 +307,6 @@ export default function FileUpload() {
     <div className="w-full max-w-md mx-auto bg-white shadow-lg rounded-lg p-8 mb-10">
       <h2 className="text-2xl font-semibold text-gray-800 mb-6 text-center">Upload and Encrypt File</h2>
 
-      {/* Error Message */}
       {errorMessage && (
         <div className="mb-4 p-4 text-red-700 bg-red-100 rounded-lg">
           {errorMessage}
