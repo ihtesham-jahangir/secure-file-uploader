@@ -59,7 +59,7 @@ export default function FileUpload() {
     }
 
     // Ensure file.name is not undefined
-    if (typeof file.name !== 'string') {
+    if (!file.name) {
       setErrorMessage('File name is not available.');
       return;
     }
