@@ -1,4 +1,3 @@
-// components/FileList.tsx
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 
@@ -30,7 +29,7 @@ export default function FileList() {
       const params = new URLSearchParams({
         pageSize: '100',
         fields: 'files(id, name, mimeType, size)',
-        q: "mimeType='application/vnd.google-apps.folder' and trashed=false", // Query only folders
+        q: "mimeType='application/vnd.google-apps.folder' and trashed=false",
       });
 
       const response = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
@@ -52,16 +51,119 @@ export default function FileList() {
     }
   };
 
-  // Function to show toast notifications
-  const showToast = (message: string) => {
-    setToastMessage(message);
-    setTimeout(() => setToastMessage(null), 3000); // Hide toast after 3 seconds
+  // Function to fetch all chunks in a folder
+  const fetchChunksInFolder = async (folderId: string): Promise<Array<any>> => {
+    if (!session?.accessToken) {
+      showToast('User session is not available.');
+      return [];
+    }
+
+    try {
+      const params = new URLSearchParams({
+        pageSize: '100',
+        fields: 'files(id, name, mimeType, size)',
+        q: `'${folderId}' in parents and mimeType!='application/vnd.google-apps.folder' and trashed=false`,
+      });
+
+      const response = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error.message || 'Failed to fetch chunks');
+      }
+
+      const data = await response.json();
+      return data.files;
+    } catch (error: any) {
+      console.error('Fetch Chunks Error:', error);
+      showToast(error.message || 'Error fetching chunks');
+      return [];
+    }
   };
 
-  // Handle passphrase input
-  const handlePassphraseChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setPassphrase(e.target.value);
-    setErrorMessage(''); // Clear error when user starts typing
+  // Function to download a single chunk
+  const downloadFile = async (fileId: string): Promise<Uint8Array | null> => {
+    if (!session?.accessToken) {
+      showToast('User session is not available.');
+      return null;
+    }
+
+    try {
+      const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: {
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`Failed to download chunk: ${errorData.error.message}`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      return new Uint8Array(arrayBuffer);
+    } catch (error: any) {
+      console.error('Download Chunk Error:', error);
+      throw error;
+    }
+  };
+
+  // Function to derive decryption key with salt
+  const deriveKey = async (passphrase: string, salt: Uint8Array): Promise<CryptoKey> => {
+    const enc = new TextEncoder();
+    const passphraseKey = enc.encode(passphrase);
+    const keyMaterial = await window.crypto.subtle.importKey(
+      'raw',
+      passphraseKey,
+      'PBKDF2',
+      false,
+      ['deriveKey']
+    );
+    return window.crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt: salt,
+        iterations: 100000,
+        hash: 'SHA-256',
+      },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt']
+    );
+  };
+
+  // Function to decrypt a chunk
+  const decryptChunk = async (encryptedData: Uint8Array, passphrase: string): Promise<ArrayBuffer> => {
+    const salt = encryptedData.slice(0, 16);
+    const iv = encryptedData.slice(16, 28);
+    const ciphertext = encryptedData.slice(28);
+    const key = await deriveKey(passphrase, salt);
+
+    return window.crypto.subtle.decrypt(
+      {
+        name: 'AES-GCM',
+        iv: iv,
+      },
+      key,
+      ciphertext
+    );
+  };
+
+  // Function to merge all decrypted chunks
+  const mergeChunks = (chunks: ArrayBuffer[]): ArrayBuffer => {
+    const totalLength = chunks.reduce((acc, chunk) => acc + chunk.byteLength, 0);
+    const mergedBuffer = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      mergedBuffer.set(new Uint8Array(chunk), offset);
+      offset += chunk.byteLength;
+    }
+    return mergedBuffer.buffer;
   };
 
   // Handle download
@@ -86,6 +188,7 @@ export default function FileList() {
       const decryptedChunks: ArrayBuffer[] = [];
       for (let i = 0; i < chunks.length; i++) {
         const encryptedData = await downloadFile(chunks[i].id);
+        if (!encryptedData) throw new Error('Failed to download chunk');
         const decryptedData = await decryptChunk(encryptedData, passphrase);
         decryptedChunks.push(decryptedData);
         setProgress(((i + 1) / chunks.length) * 100);
@@ -103,11 +206,17 @@ export default function FileList() {
 
       showToast('File downloaded and decrypted successfully!');
     } catch (error: any) {
-      alert('Download and Decryption Error:');
+      console.error('Download and Decryption Error:', error);
       showToast(error.message || 'Error downloading and decrypting file');
     } finally {
       setDownloading(false);
     }
+  };
+
+  // Function to show toast notifications
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 3000);
   };
 
   return (
@@ -119,7 +228,7 @@ export default function FileList() {
           type="password"
           placeholder="Enter decryption passphrase"
           value={passphrase}
-          onChange={handlePassphraseChange}
+          onChange={(e) => setPassphrase(e.target.value)}
           className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none"
         />
         {errorMessage && <p className="mt-2 text-red-500 text-sm">{errorMessage}</p>}
