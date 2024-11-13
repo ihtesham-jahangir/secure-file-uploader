@@ -1,11 +1,13 @@
-import NextAuth from 'next-auth';
+// pages/api/auth/[...nextauth].ts
+
+import NextAuth, { NextAuthOptions } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 
-export default NextAuth({
+const options: NextAuthOptions = {
   providers: [
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      clientId: process.env.GOOGLE_CLIENT_ID || '',
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
       authorization: {
         params: {
           scope: 'openid email profile https://www.googleapis.com/auth/drive.file',
@@ -22,9 +24,11 @@ export default NextAuth({
       return token;
     },
     async session({ session, token }) {
-      // Pass the access token to the client
-      session.accessToken = token.accessToken;
+      // Add the access token to the session object
+      session.accessToken = token.accessToken as string;
       return session;
     },
   },
-});
+};
+
+export default NextAuth(options);
