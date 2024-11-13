@@ -48,6 +48,35 @@ export default function FileList() {
     }
   };
 
+  // Function to delete a folder (file) from Google Drive
+  const deleteFile = async (fileId: string) => {
+    if (!session?.accessToken) {
+      showToast('User session is not available.');
+      return;
+    }
+
+    try {
+      const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`Failed to delete file: ${errorData.error.message}`);
+      }
+
+      // Remove the file from the UI after deletion
+      setFolders((prevFolders) => prevFolders.filter((folder) => folder.id !== fileId));
+      showToast('File deleted successfully!');
+    } catch (error: any) {
+      console.error('Delete File Error:', error);
+      showToast(error.message || 'Failed to delete the file');
+    }
+  };
+
   // Function to fetch chunks for a specific folder
   const fetchChunksInFolder = async (folderId: string): Promise<Array<any>> => {
     if (!session?.accessToken) {
@@ -163,7 +192,7 @@ export default function FileList() {
     return mergedBuffer.buffer;
   };
 
-  // Handle download and decryption for specific file
+  // Handle download and decryption for a specific file
   const handleDownload = async (folderId: string, folderName: string) => {
     if (!passphrase) {
       showToast('Please enter the passphrase.');
@@ -245,13 +274,19 @@ export default function FileList() {
             {folders.map((folder) => (
               <tr key={folder.id} className="border-t">
                 <td className="py-4 px-6 text-gray-800">{folder.name}</td>
-                <td className="py-4 px-6">
+                <td className="py-4 px-6 flex space-x-4">
                   <button
                     onClick={() => handleDownload(folder.id, folder.name)}
                     disabled={decryptionInProgress === folder.id}
                     className="bg-purple-500 text-white px-3 py-1.5 rounded-lg"
                   >
                     {decryptionInProgress === folder.id ? 'Decrypting...' : 'Download & Decrypt'}
+                  </button>
+                  <button
+                    onClick={() => deleteFile(folder.id)}
+                    className="bg-red-500 text-white px-3 py-1.5 rounded-lg"
+                  >
+                    Delete
                   </button>
                 </td>
               </tr>

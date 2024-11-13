@@ -1,5 +1,3 @@
-// pages/index.tsx
-
 import { useState, useEffect } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import FileUpload from '../components/FileUpload';
@@ -19,20 +17,17 @@ export default function Home() {
   const [hasSubscribed, setHasSubscribed] = useState<boolean>(false);
 
   useEffect(() => {
-    // Check if the user has already subscribed
     const subscribedFlag = localStorage.getItem('hasSubscribed');
     if (subscribedFlag === 'true') {
       setHasSubscribed(true);
     }
 
-    // Show the subscription modal if the user is unauthenticated and hasn't subscribed yet
     if (status === 'unauthenticated' && subscribedFlag !== 'true') {
       setShowSubscribeModal(true);
     } else {
       setShowSubscribeModal(false);
     }
 
-    // Handle sign-in errors
     if (router.query.error) {
       if (router.query.error === 'AccessDenied') {
         setSubscriptionStatus('Access denied. Your email is not approved yet.');
@@ -58,7 +53,7 @@ export default function Home() {
         setSubscriptionStatus('Subscription request sent! Please wait for approval.');
         setEmail('');
         setHasSubscribed(true);
-        localStorage.setItem('hasSubscribed', 'true'); // Set the flag
+        localStorage.setItem('hasSubscribed', 'true');
       } else {
         const data = await response.json();
         setSubscriptionStatus(`Error: ${data.message}`);
@@ -71,8 +66,8 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6">
-      <header className="w-full max-w-3xl flex justify-between items-center mb-12 p-4 bg-white bg-opacity-90 rounded-md shadow-lg">
+    <div className="min-h-screen flex flex-col items-center justify-between bg-gradient-to-br from-blue-400 to-purple-500 p-6 h-full">
+      <header className="w-full flex justify-between items-center mb-12 p-6 bg-white bg-opacity-80 rounded-md shadow-lg">
         <h1 className="text-4xl font-bold text-gray-900">Alpha Secure File Uploader</h1>
         {!session ? (
           <button
@@ -103,15 +98,13 @@ export default function Home() {
         )}
       </header>
 
-      <main className="w-full max-w-3xl flex flex-col items-center space-y-8">
+      <main className="w-full flex-1 flex justify-center items-center space-y-8">
         {session ? (
-          <>
-            <Dashboard />
-          </>
+          <Dashboard />
         ) : (
-          <div className="text-center text-gray-700 bg-white bg-opacity-90 p-6 rounded-md shadow-lg">
+          <div className="text-center text-gray-700 bg-white bg-opacity-80 p-6 rounded-md shadow-lg">
             <Image
-              src="/encryption.svg" // Local image path in /public
+              src="/encryption.svg"
               alt="Encryption Illustration"
               width={300}
               height={300}
@@ -125,7 +118,7 @@ export default function Home() {
       {/* Subscription Modal */}
       {showSubscribeModal && !session && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-          <div className="bg-white rounded-lg p-8 max-w-md w-full relative">
+          <div className="bg-white rounded-lg p-8 max-w-md w-full relative shadow-xl">
             {/* Close (X) Button */}
             <button
               onClick={() => setShowSubscribeModal(false)}
@@ -166,6 +159,18 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* Footer */}
+      <footer className="w-full bg-gray-800 text-white py-4 mt-12">
+        <div className="max-w-3xl mx-auto text-center">
+          <p className="text-sm">
+            Developed by <span className="font-semibold">Ihtesham Jahangir</span> at{' '}
+            <a href="https://alphanetwork.com.pk" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-400">
+              Alpha Network
+            </a>
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }
