@@ -1,34 +1,22 @@
 // .eslintrc.js
 module.exports = {
-    root: true,  // Ensure ESLint stops looking in parent directories for configs
+    root: true,
     parserOptions: {
-      ecmaVersion: 2020,
+      ecmaVersion: 12,
       sourceType: 'module',
-      ecmaFeatures: {
-        jsx: true,
-      },
-    },
-    settings: {
-      react: {
-        version: 'detect',
-      },
     },
     env: {
       browser: true,
-      node: true,
-      es6: true,
+      es2021: true,
     },
     extends: [
       'eslint:recommended',
       'plugin:react/recommended',
       'plugin:@typescript-eslint/recommended',
-      'next/core-web-vitals',  // Recommended for Next.js projects
+      'plugin:next/recommended',
     ],
-    parser: '@typescript-eslint/parser',  // Use TypeScript parser
+    parser: '@typescript-eslint/parser',
     plugins: ['react', '@typescript-eslint'],
-    rules: {
-      'react/react-in-jsx-scope': 'off', // No longer needed with React 17+
-      'react/prop-types': 'off',          // Disable prop-types with TypeScript
-    },
+    rules: {},
   };
   
