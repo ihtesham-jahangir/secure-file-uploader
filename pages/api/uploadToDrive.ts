@@ -1,9 +1,10 @@
-// pages/api/uploadToDrive.js
+// pages/api/uploadToDrive.ts
 
+import { NextApiRequest, NextApiResponse } from 'next';
 import { getSession } from 'next-auth/react';
 import { google } from 'googleapis';
 
-export default async function handler(req, res) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     // Only allow POST requests
     return res.status(405).json({ message: 'Method Not Allowed' });
@@ -12,8 +13,8 @@ export default async function handler(req, res) {
   // Get the user session
   const session = await getSession({ req });
 
-  if (!session) {
-    // If the user is not authenticated
+  if (!session || !session.accessToken) {
+    // If the user is not authenticated or access token is missing
     return res.status(401).json({ message: 'Unauthorized' });
   }
 
@@ -26,7 +27,7 @@ export default async function handler(req, res) {
   try {
     // Initialize OAuth2 Client with user's access token
     const oauth2Client = new google.auth.OAuth2();
-    oauth2Client.setCredentials({ access_token: session.accessToken });
+    oauth2Client.setCredentials({ access_token: session.accessToken as string });
 
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
@@ -35,7 +36,7 @@ export default async function handler(req, res) {
       name: fileName,
     };
 
-    // Assuming encryptedData is a Base64 string, convert it to a buffer
+    // Convert encryptedData (assumed to be a Base64 string) to a buffer
     const buffer = Buffer.from(encryptedData, 'base64');
 
     const media = {
