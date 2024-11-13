@@ -19,19 +19,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     return res.status(400).json({ message: 'Invalid email address' });
   }
 
+  // Check for required environment variables
+  const { EMAIL_USER, EMAIL_PASS, ADMIN_EMAIL } = process.env;
+  if (!EMAIL_USER || !EMAIL_PASS || !ADMIN_EMAIL) {
+    console.error('Missing environment variables for email configuration');
+    return res.status(500).json({ message: 'Email configuration error' });
+  }
+
   // Create a transporter using SMTP
   const transporter = nodemailer.createTransport({
-    service: 'Gmail', // e.g., Gmail, Yahoo, Outlook
+    service: 'Gmail',
     auth: {
-      user: process.env.EMAIL_USER, // Your email address
-      pass: process.env.EMAIL_PASS, // Your email password or app password
+      user: EMAIL_USER,
+      pass: EMAIL_PASS,
     },
   });
 
   // Email options
   const mailOptions = {
-    from: process.env.EMAIL_USER,
-    to: process.env.ADMIN_EMAIL, // Your admin email to receive subscription requests
+    from: EMAIL_USER,
+    to: ADMIN_EMAIL,
     subject: 'New Subscription Request',
     text: `A new user has requested access with the following email: ${email}`,
   };
@@ -39,7 +46,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   try {
     await transporter.sendMail(mailOptions);
     return res.status(200).json({ message: 'Subscription request sent successfully!' });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error sending email:', error);
     return res.status(500).json({ message: 'Failed to send subscription request' });
   }
