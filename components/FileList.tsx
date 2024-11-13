@@ -4,11 +4,8 @@ import { useSession } from 'next-auth/react';
 export default function FileList() {
   const { data: session, status } = useSession();
   const [folders, setFolders] = useState<Array<any>>([]);
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [passphrase, setPassphrase] = useState('');
   const [downloading, setDownloading] = useState<boolean>(false);
-  const [deleting, setDeleting] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [progress, setProgress] = useState<number>(0);
 
@@ -18,7 +15,7 @@ export default function FileList() {
     }
   }, [session]);
 
-  // Function to fetch folders representing original files
+  // Fetch folders representing original files
   const fetchFolders = async () => {
     if (!session?.accessToken) {
       showToast('User session is not available.');
@@ -51,7 +48,7 @@ export default function FileList() {
     }
   };
 
-  // Function to fetch all chunks in a folder
+  // Fetch all chunks in a folder
   const fetchChunksInFolder = async (folderId: string): Promise<Array<any>> => {
     if (!session?.accessToken) {
       showToast('User session is not available.');
@@ -85,7 +82,7 @@ export default function FileList() {
     }
   };
 
-  // Function to download a single chunk
+  // Download a single chunk
   const downloadFile = async (fileId: string): Promise<Uint8Array | null> => {
     if (!session?.accessToken) {
       showToast('User session is not available.');
@@ -112,7 +109,7 @@ export default function FileList() {
     }
   };
 
-  // Function to derive decryption key with salt
+  // Derive decryption key with salt
   const deriveKey = async (passphrase: string, salt: Uint8Array): Promise<CryptoKey> => {
     const enc = new TextEncoder();
     const passphraseKey = enc.encode(passphrase);
@@ -137,7 +134,7 @@ export default function FileList() {
     );
   };
 
-  // Function to decrypt a chunk
+  // Decrypt a chunk
   const decryptChunk = async (encryptedData: Uint8Array, passphrase: string): Promise<ArrayBuffer> => {
     const salt = encryptedData.slice(0, 16);
     const iv = encryptedData.slice(16, 28);
@@ -154,7 +151,7 @@ export default function FileList() {
     );
   };
 
-  // Function to merge all decrypted chunks
+  // Merge all decrypted chunks
   const mergeChunks = (chunks: ArrayBuffer[]): ArrayBuffer => {
     const totalLength = chunks.reduce((acc, chunk) => acc + chunk.byteLength, 0);
     const mergedBuffer = new Uint8Array(totalLength);
@@ -213,7 +210,7 @@ export default function FileList() {
     }
   };
 
-  // Function to show toast notifications
+  // Show toast notifications
   const showToast = (message: string) => {
     setToastMessage(message);
     setTimeout(() => setToastMessage(null), 3000);
@@ -231,7 +228,6 @@ export default function FileList() {
           onChange={(e) => setPassphrase(e.target.value)}
           className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none"
         />
-        {errorMessage && <p className="mt-2 text-red-500 text-sm">{errorMessage}</p>}
       </div>
       {status === 'loading' ? (
         <p className="text-center text-gray-600">Loading session...</p>
@@ -262,6 +258,17 @@ export default function FileList() {
             ))}
           </tbody>
         </table>
+      )}
+      {downloading && (
+        <div className="mt-4">
+          <div className="w-full bg-gray-200 rounded-full h-4">
+            <div
+              className="bg-purple-500 h-4 rounded-full"
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
+          <p className="text-center mt-2 text-gray-600">{Math.round(progress)}% downloaded</p>
+        </div>
       )}
     </div>
   );
