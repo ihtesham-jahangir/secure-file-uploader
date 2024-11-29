@@ -12,6 +12,7 @@ export default function FileUpload() {
 
   // Configuration
   const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB
+  const MAX_PARALLEL_UPLOADS = 5; // Limit parallel uploads to prevent overwhelming the network
 
   // Handle file selection
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -222,7 +223,6 @@ export default function FileUpload() {
           throw new Error(`Failed to upload chunk: ${errorData.error.message}`);
         }
 
-        console.log('Chunk uploaded successfully.');
         return;
       } catch (error: any) {
         console.error(`Error uploading chunk: ${error.message}`);
@@ -234,7 +234,7 @@ export default function FileUpload() {
     }
   };
 
-  // Handle the upload process
+  // Enhanced parallel upload handling
   const handleUpload = async () => {
     if (!file || !session || !passphrase) {
       setErrorMessage('Please select a file and enter a passphrase.');
@@ -260,15 +260,29 @@ export default function FileUpload() {
       const folderId = await createDriveFolder(file.name, accessToken);
       const chunks = splitFileIntoChunks(file, CHUNK_SIZE);
 
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        const { encryptedChunk, salt } = await encryptChunkWithSalt(chunk, passphrase);
-        const chunkFileName = `chunk${i + 1}.alpha`;
-        const uploadUrl = await initiateResumableUpload(chunkFileName, accessToken, encryptedChunk.byteLength, folderId);
+      // Parallel chunk upload with controlled concurrency
+      const uploadChunks = async () => {
+        const totalChunks = chunks.length;
+        const uploadPromises: Promise<void>[] = [];
 
-        await uploadChunk(uploadUrl, encryptedChunk);
-        setProgress(((i + 1) / chunks.length) * 100);
-      }
+        for (let i = 0; i < totalChunks; i += MAX_PARALLEL_UPLOADS) {
+          const currentBatch = chunks.slice(i, i + MAX_PARALLEL_UPLOADS);
+          
+          const batchPromises = currentBatch.map(async (chunk, index) => {
+            const chunkIndex = i + index;
+            const { encryptedChunk, salt } = await encryptChunkWithSalt(chunk, passphrase);
+            const chunkFileName = `chunk${chunkIndex + 1}.alpha`;
+            const uploadUrl = await initiateResumableUpload(chunkFileName, accessToken, encryptedChunk.byteLength, folderId);
+
+            await uploadChunk(uploadUrl, encryptedChunk);
+            setProgress(((chunkIndex + 1) / totalChunks) * 100);
+          });
+
+          await Promise.all(batchPromises);
+        }
+      };
+
+      await uploadChunks();
 
       alert('File uploaded successfully!');
       setFile(null);
@@ -281,6 +295,7 @@ export default function FileUpload() {
     }
   };
 
+  // Render logic remains the same as in the original component
   if (!session) {
     return (
       <div className="flex flex-col items-center bg-white shadow-md rounded p-6 mb-8">

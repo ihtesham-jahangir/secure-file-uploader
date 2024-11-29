@@ -4,29 +4,25 @@ import { useSession } from 'next-auth/react';
 export default function FileList() {
   const { data: session, status } = useSession();
   const [folders, setFolders] = useState<Array<any>>([]);
-  const [decryptionInProgress, setDecryptionInProgress] = useState<string | null>(null); // Track file being decrypted
+  const [decryptionInProgress, setDecryptionInProgress] = useState<string | null>(null);
   const [progress, setProgress] = useState<number>(0);
   const [passphrase, setPassphrase] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (session?.accessToken) {
-      fetchFolders();
-    }
-  }, [session]);
+  // Configuration
+  const MAX_PARALLEL_DOWNLOADS = 5; // Limit parallel downloads
 
-  // Function to fetch folders representing original files
+  // Function to fetch folders from Google Drive
   const fetchFolders = async () => {
-    if (!session?.accessToken) {
-      showToast('User session is not available.');
-      return;
-    }
+    if (!session?.accessToken) return;
 
     try {
+      const query = `mimeType='application/vnd.google-apps.folder' and trashed=false`;
       const params = new URLSearchParams({
-        pageSize: '100',
-        fields: 'files(id, name, mimeType, size)',
-        q: "mimeType='application/vnd.google-apps.folder' and trashed=false",
+        q: query,
+        fields: 'files(id, name, createdTime)',
+        spaces: 'drive',
+        orderBy: 'createdTime desc'
       });
 
       const response = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
@@ -36,109 +32,18 @@ export default function FileList() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error.message || 'Failed to fetch folders');
+        throw new Error('Failed to fetch folders');
       }
 
       const data = await response.json();
-      setFolders(data.files);
+      setFolders(data.files || []);
     } catch (error: any) {
-      console.error('Fetch Folders Error:', error);
-      showToast(error.message || 'Failed to load folders');
+      console.error('Error fetching folders:', error);
+      setToastMessage(`Failed to fetch files: ${error.message}`);
     }
   };
 
-  // Function to delete a folder (file) from Google Drive
-  const deleteFile = async (fileId: string) => {
-    if (!session?.accessToken) {
-      showToast('User session is not available.');
-      return;
-    }
-
-    try {
-      const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${session.accessToken}`,
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`Failed to delete file: ${errorData.error.message}`);
-      }
-
-      // Remove the file from the UI after deletion
-      setFolders((prevFolders) => prevFolders.filter((folder) => folder.id !== fileId));
-      showToast('File deleted successfully!');
-    } catch (error: any) {
-      console.error('Delete File Error:', error);
-      showToast(error.message || 'Failed to delete the file');
-    }
-  };
-
-  // Function to fetch chunks for a specific folder
-  const fetchChunksInFolder = async (folderId: string): Promise<Array<any>> => {
-    if (!session?.accessToken) {
-      showToast('User session is not available.');
-      return [];
-    }
-
-    try {
-      const params = new URLSearchParams({
-        pageSize: '100',
-        fields: 'files(id, name, mimeType, size)',
-        q: `'${folderId}' in parents and mimeType!='application/vnd.google-apps.folder' and trashed=false`,
-      });
-
-      const response = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
-        headers: {
-          Authorization: `Bearer ${session.accessToken}`,
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error.message || 'Failed to fetch chunks');
-      }
-
-      const data = await response.json();
-      return data.files;
-    } catch (error: any) {
-      console.error('Fetch Chunks Error:', error);
-      showToast(error.message || 'Error fetching chunks');
-      return [];
-    }
-  };
-
-  // Download and decrypt a specific chunk
-  const downloadFile = async (fileId: string): Promise<Uint8Array | null> => {
-    if (!session?.accessToken) {
-      showToast('User session is not available.');
-      return null;
-    }
-
-    try {
-      const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-        headers: {
-          Authorization: `Bearer ${session.accessToken}`,
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`Failed to download chunk: ${errorData.error.message}`);
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      return new Uint8Array(arrayBuffer);
-    } catch (error: any) {
-      console.error('Download Chunk Error:', error);
-      throw error;
-    }
-  };
-
-  // Derive decryption key with salt
+  // Function to derive encryption key with salt
   const deriveKey = async (passphrase: string, salt: Uint8Array): Promise<CryptoKey> => {
     const enc = new TextEncoder();
     const passphraseKey = enc.encode(passphrase);
@@ -149,7 +54,7 @@ export default function FileList() {
       false,
       ['deriveKey']
     );
-    return window.crypto.subtle.deriveKey(
+    return await window.crypto.subtle.deriveKey(
       {
         name: 'PBKDF2',
         salt: salt,
@@ -163,148 +68,238 @@ export default function FileList() {
     );
   };
 
-  // Decrypt a chunk
-  const decryptChunk = async (encryptedData: Uint8Array, passphrase: string): Promise<ArrayBuffer> => {
-    const salt = encryptedData.slice(0, 16);
-    const iv = encryptedData.slice(16, 28);
-    const ciphertext = encryptedData.slice(28);
-    const key = await deriveKey(passphrase, salt);
+  // Fetch list of chunks for a specific folder
+  const fetchChunks = async (folderId: string, accessToken: string) => {
+    const query = `'${folderId}' in parents and trashed=false`;
+    const params = new URLSearchParams({
+      q: query,
+      fields: 'files(id, name, size)',
+      orderBy: 'name'
+    });
 
-    return window.crypto.subtle.decrypt(
-      {
-        name: 'AES-GCM',
-        iv: iv,
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
       },
-      key,
-      ciphertext
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch file chunks');
+    }
+
+    const data = await response.json();
+    return data.files.sort((a: any, b: any) => 
+      parseInt(a.name.replace('chunk', '')) - parseInt(b.name.replace('chunk', ''))
     );
   };
 
-  // Merge decrypted chunks
-  const mergeChunks = (chunks: ArrayBuffer[]): ArrayBuffer => {
-    const totalLength = chunks.reduce((acc, chunk) => acc + chunk.byteLength, 0);
-    const mergedBuffer = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const chunk of chunks) {
-      mergedBuffer.set(new Uint8Array(chunk), offset);
-      offset += chunk.byteLength;
+  // Download a single chunk
+  const downloadChunk = async (fileId: string, accessToken: string) => {
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to download chunk');
     }
-    return mergedBuffer.buffer;
+
+    return await response.arrayBuffer();
   };
 
-  // Handle download and decryption for a specific file
-  const handleDownload = async (folderId: string, folderName: string) => {
-    if (!passphrase) {
-      showToast('Please enter the passphrase.');
+  // Decrypt a chunk
+  const decryptChunk = async (encryptedChunk: ArrayBuffer, passphrase: string) => {
+    const data = new Uint8Array(encryptedChunk);
+    const salt = data.slice(0, 16);
+    const iv = data.slice(16, 28);
+    const encryptedData = data.slice(28);
+
+    const key = await deriveKey(passphrase, salt);
+    const decryptedBuffer = await window.crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      encryptedData
+    );
+
+    return decryptedBuffer;
+  };
+
+  // Combine chunks and create downloadable file
+  const downloadAndDecryptFile = async (folderName: string, folderID: string) => {
+    if (!session?.accessToken || !passphrase) {
+      setToastMessage('Please enter the passphrase');
       return;
     }
 
-    if (!session?.accessToken) {
-      showToast('User session is not available.');
-      return;
-    }
-
-    setDecryptionInProgress(folderId);
+    setDecryptionInProgress(folderName);
     setProgress(0);
 
     try {
-      const chunks = await fetchChunksInFolder(folderId);
-      if (chunks.length === 0) throw new Error('No chunks found in the selected folder.');
+      // Fetch chunks
+      const chunks = await fetchChunks(folderID, session.accessToken);
+      const totalChunks = chunks.length;
 
+      // Parallel chunk download and decryption
       const decryptedChunks: ArrayBuffer[] = [];
-      for (let i = 0; i < chunks.length; i++) {
-        const encryptedData = await downloadFile(chunks[i].id);
-        if (!encryptedData) throw new Error('Failed to download chunk');
-        const decryptedData = await decryptChunk(encryptedData, passphrase);
-        decryptedChunks.push(decryptedData);
-        setProgress(((i + 1) / chunks.length) * 100);
+      for (let i = 0; i < totalChunks; i += MAX_PARALLEL_DOWNLOADS) {
+        const currentBatch = chunks.slice(i, i + MAX_PARALLEL_DOWNLOADS);
+        
+        const batchPromises = currentBatch.map(async (chunk: any) => {
+          const downloadedChunk = await downloadChunk(
+            chunk.id ?? '', // Default to an empty string
+            session.accessToken ?? '' // Default to an empty string
+          );
+          
+          const decryptedChunk = await decryptChunk(downloadedChunk, passphrase);
+          decryptedChunks[chunks.indexOf(chunk)] = decryptedChunk;
+          setProgress(((decryptedChunks.filter(c => c).length) / totalChunks) * 100);
+        });
+
+        await Promise.all(batchPromises);
       }
 
-      const blob = new Blob([mergeChunks(decryptedChunks)]);
-      const url = URL.createObjectURL(blob);
-      const element = document.createElement('a');
-      element.href = url;
-      element.download = folderName;
-      document.body.appendChild(element);
-      element.click();
-      document.body.removeChild(element);
-      URL.revokeObjectURL(url);
+      // Combine decrypted chunks
+      const combinedBuffer = new Uint8Array(decryptedChunks.reduce((total, chunk) => total + chunk.byteLength, 0));
+      let offset = 0;
+      decryptedChunks.forEach(chunk => {
+        combinedBuffer.set(new Uint8Array(chunk), offset);
+        offset += chunk.byteLength;
+      });
 
-      showToast('File downloaded and decrypted successfully!');
+      // Create and trigger download
+      const blob = new Blob([combinedBuffer]);
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = folderName;
+      link.click();
+
+      setToastMessage(`File ${folderName} decrypted and downloaded successfully!`);
     } catch (error: any) {
-      console.error('Download and Decryption Error:', error);
-      showToast(error.message || 'Error downloading and decrypting file');
+      console.error('Decryption error:', error);
+      setToastMessage(`Decryption failed: ${error.message}`);
     } finally {
       setDecryptionInProgress(null);
+      setProgress(0);
     }
   };
 
-  // Show toast notifications
-  const showToast = (message: string) => {
-    setToastMessage(message);
-    setTimeout(() => setToastMessage(null), 3000);
+  // Delete a file/folder
+  const deleteFile = async (folderID: string, folderName: string) => {
+    if (!session?.accessToken) return;
+
+    try {
+      const response = await fetch(`https://www.googleapis.com/drive/v3/files/${folderID}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete file');
+      }
+
+      // Remove the folder from the list
+      setFolders(folders.filter(folder => folder.id !== folderID));
+      setToastMessage(`${folderName} deleted successfully`);
+    } catch (error: any) {
+      console.error('Delete error:', error);
+      setToastMessage(`Delete failed: ${error.message}`);
+    }
   };
 
+  useEffect(() => {
+    if (session?.accessToken) {
+      fetchFolders();
+    }
+  }, [session]);
+
+  if (status === 'loading') {
+    return <div>Loading...</div>;
+  }
+
+  if (!session) {
+    return <div>Please sign in to view your files</div>;
+  }
+
   return (
-    <div className="w-full max-w-4xl mx-auto p-8 bg-white shadow-lg rounded-xl mt-10">
-      <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Your Encrypted Files</h2>
-      {toastMessage && <div className="fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg">{toastMessage}</div>}
-      <div className="mb-6">
-        <input
-          type="password"
-          placeholder="Enter decryption passphrase"
-          value={passphrase}
-          onChange={(e) => setPassphrase(e.target.value)}
-          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none"
-        />
+    <div className="container mx-auto px-4 py-8">
+    <h2 className="text-2xl font-bold mb-6 text-gray-800">Your Encrypted Files</h2>
+  
+    {toastMessage && (
+      <div className="mb-4 p-4 bg-yellow-100 text-yellow-800 rounded shadow">
+        {toastMessage}
+        <button
+          onClick={() => setToastMessage(null)}
+          className="ml-4 text-yellow-600 hover:text-yellow-800 font-semibold"
+        >
+          Dismiss
+        </button>
       </div>
-      {status === 'loading' ? (
-        <p className="text-center text-gray-600">Loading session...</p>
-      ) : folders.length === 0 ? (
-        <p className="text-center text-gray-600">No files found. Upload some files first.</p>
-      ) : (
-        <table className="min-w-full bg-white border border-gray-200 rounded-lg">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="py-4 px-6 text-left font-semibold text-gray-700">File Name</th>
-              <th className="py-4 px-6 text-left font-semibold text-gray-700">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {folders.map((folder) => (
-              <tr key={folder.id} className="border-t">
-                <td className="py-4 px-6 text-gray-800">{folder.name}</td>
-                <td className="py-4 px-6 flex space-x-4">
-                  <button
-                    onClick={() => handleDownload(folder.id, folder.name)}
-                    disabled={decryptionInProgress === folder.id}
-                    className="bg-purple-500 text-white px-3 py-1.5 rounded-lg"
-                  >
-                    {decryptionInProgress === folder.id ? 'Decrypting...' : 'Download & Decrypt'}
-                  </button>
-                  <button
-                    onClick={() => deleteFile(folder.id)}
-                    className="bg-red-500 text-white px-3 py-1.5 rounded-lg"
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      {decryptionInProgress && (
-        <div className="mt-4">
-          <div className="w-full bg-gray-200 rounded-full h-4">
-            <div
-              className="bg-purple-500 h-4 rounded-full"
-              style={{ width: `${progress}%` }}
-            ></div>
-          </div>
-          <p className="text-center mt-2 text-gray-600">{Math.round(progress)}% downloaded</p>
+    )}
+  
+    {decryptionInProgress && (
+      <div className="mb-4">
+        <div className="w-full bg-gray-200 rounded-full h-4">
+          <div
+            className="bg-blue-500 h-4 rounded-full"
+            style={{ width: `${progress}%` }}
+          ></div>
         </div>
-      )}
+        <p className="text-center mt-2 text-sm text-gray-700">
+          Decrypting {decryptionInProgress}: {Math.round(progress)}%
+        </p>
+      </div>
+    )}
+  
+    <div className="mb-6">
+      <input
+        type="password"
+        placeholder="Enter Decryption Passphrase"
+        value={passphrase}
+        onChange={(e) => setPassphrase(e.target.value)}
+        className="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring focus:ring-blue-200 focus:border-blue-400"
+      />
     </div>
+  
+    {folders.length === 0 ? (
+      <p className="text-center text-gray-500">No encrypted files found.</p>
+    ) : (
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {folders.map((folder) => (
+          <div
+            key={folder.id}
+            className="bg-white shadow-lg rounded-lg p-4 flex flex-col justify-between"
+          >
+            <div>
+              <h3 className="font-semibold text-lg text-gray-800 truncate">
+                {folder.name}
+              </h3>
+              <p className="text-sm text-gray-500">
+                Uploaded: {new Date(folder.createdTime).toLocaleDateString()}
+              </p>
+            </div>
+            <div className="mt-4 flex space-x-2">
+              <button
+                onClick={() => downloadAndDecryptFile(folder.name, folder.id)}
+                disabled={decryptionInProgress !== null}
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 disabled:opacity-50"
+              >
+                Decrypt
+              </button>
+              <button
+                onClick={() => deleteFile(folder.id, folder.name)}
+                className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+  
   );
-}
+} 
